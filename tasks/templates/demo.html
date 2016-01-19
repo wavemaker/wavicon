@@ -27,6 +27,10 @@
 			   -moz-column-gap:20px;
 			        column-gap:20px;
 			}
+			.dark {
+			background-color: #000;
+			color: #fff;
+			}
 		.icons__item,
 		.icons__item i {
 			line-height:2em;
@@ -60,6 +64,7 @@
 		<div class="icons" id="icons">
 			<% for (var glyphIdx = 0; glyphIdx < glyphs.length; glyphIdx++) { var glyph = glyphs[glyphIdx] %>
 				<div class="icons__item" data-name="<%= glyph %>"><i class="<%= baseClass %> <%= classPrefix %><%= glyph %>"></i> <%= classPrefix %><%= glyph %></div>
+				<div class="icons__item dark" data-name="<%= glyph %>"><i class="<%= baseClass %> <%= classPrefix %><%= glyph %>"></i> <%= classPrefix %><%= glyph %></div>
 			<% } %>
 		</div>
 
@@ -85,7 +90,7 @@
 				e = e || window.event;
 				var name = e.target.getAttribute('data-name') || e.target.parentNode.getAttribute('data-name');
 				document.getElementById('name').innerHTML = name;
-				<% if (addLigatures) { %>document.getElementById('name2').innerHTML = name;<% } %>
+				document.getElementById('name2').innerHTML = name;
 			}
 		})();
 		</script>
