@@ -11,20 +11,22 @@ module.exports = function(grunt) {
 		webfont: {
 			ios: {
 				src: 'src/ios/*.svg',
-				dest: 'dist/wavicon/ios',
+				dest: 'dist/wavicon/ios/fonts',
+				destCss: 'dist/wavicon/ios/css',
 				options: {
 					stylesheet: 'css',
-					fontFilename: 'fonts/wavicon',
+					fontFilename: 'wavicon',
 					font: 'wavicon'
 				}
 			},
 			android: {
 				src: 'src/android/*.svg',
-				dest: 'dist/wavicon/android',
+				dest: 'dist/wavicon/android/fonts',
+				destCss: 'dist/wavicon/android/css',
 				options: {
-					stylesheet: 'css',
-					fontFilename: 'fonts/wavicon',
-					font: 'wavicon'
+                    stylesheet: 'css',
+                    fontFilename: 'wavicon',
+                    font: 'wavicon'
 				}
 			}			
 		}, 
@@ -42,11 +44,11 @@ module.exports = function(grunt) {
 					debounceDelay: 100,
 					nospawn: true
 				}
-			},
+			}
 		},
 		jscs: {
 			options: {
-				config: ".jscs.json",
+				config: ".jscs.json"
 			},
 			all: ['tasks/*.js']
 		},

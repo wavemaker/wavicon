@@ -10,25 +10,17 @@ module.exports = function(grunt) {
 
 	var fs = require('fs');
 	var path = require('path');
-	var exec = require('exec');
 	var async = require('async');
 	var glob = require('glob');
 	var chalk = require('chalk');
 	var mkdirp = require('mkdirp');
 	var crypto = require('crypto');
+	var ttf2woff2 = require('ttf2woff2');
 	var _ = require('lodash');
 	var _s = require('underscore.string');
 	var wf = require('./util/util');
 
 	grunt.registerMultiTask('webfont', 'Compile separate SVG files to webfont', function() {
-		['src', 'dest'].forEach(function(name) {
-			this.requiresConfig([this.name, this.target, name].join('.'));
-		}.bind(this));
-
-		var allDone = this.async();
-		var params = this.data;
-		var options = this.options();
-		var md5 = crypto.createHash('md5');
 
 		/**
 		 * Winston to Grunt logger adapter.
@@ -48,6 +40,24 @@ module.exports = function(grunt) {
 			}
 		};
 
+		var allDone = this.async();
+		var params = this.data;
+		var options = this.options();
+		var md5 = crypto.createHash('md5');
+
+		/*
+		 * Check for `src` param on target config
+		 */
+		this.requiresConfig([this.name, this.target, 'src'].join('.'));
+
+		/*
+		 * Check for `dest` param on either target config or global options object
+		 */
+		if (_.isUndefined(params.dest) && _.isUndefined(options.dest)) {
+			logger.warn('Required property ' + [this.name, this.target, 'dest'].join('.')
+				+ ' or ' + [this.name, this.target, 'options.dest'].join('.') + ' missing.');
+		}
+
 		if (options.skip) {
 			completeTask();
 			return;
@@ -65,8 +75,8 @@ module.exports = function(grunt) {
 		var o = {
 			logger: logger,
 			fontBaseName: options.font || 'icons',
-			destCss: params.destCss || params.dest,
-			dest: params.dest,
+			destCss: options.destCss || params.destCss || params.dest,
+			dest: options.dest || params.dest,
 			relativeFontPath: options.relativeFontPath,
 			addHashes: options.hashes !== false,
 			addLigatures: options.ligatures === true,
@@ -76,6 +86,7 @@ module.exports = function(grunt) {
 			stylesheet: options.stylesheet || path.extname(options.template).replace(/^\./, '') || 'css',
 			htmlDemo: options.htmlDemo !== false,
 			htmlDemoTemplate: options.htmlDemoTemplate,
+			htmlDemoFilename: options.htmlDemoFilename,
 			styles: optionToArray(options.styles, 'font,icon'),
 			types: optionToArray(options.types, 'eot,woff,ttf'),
 			order: optionToArray(options.order, wf.fontFormats),
@@ -92,7 +103,8 @@ module.exports = function(grunt) {
 			fontHeight: options.fontHeight !== undefined ? options.fontHeight : 512,
 			descent: options.descent !== undefined ? options.descent : 64,
 			cache: options.cache || path.join(__dirname, '..', '.cache'),
-			callback: options.callback
+			callback: options.callback,
+			customOutputs: options.customOutputs
 		};
 
 		o = _.extend(o, {
@@ -165,6 +177,7 @@ module.exports = function(grunt) {
 			generateWoff2Font,
 			generateStylesheet,
 			generateDemoHtml,
+			generateCustomOutputs,
 			printDone
 		], completeTask);
 
@@ -265,35 +278,21 @@ module.exports = function(grunt) {
 				return;
 			}
 
-			// Run woff2_compress
-			var ttfFont = wf.getFontPath(o, 'ttf');
-			var args = [
-				'woff2_compress',
-				ttfFont
-			];
+			// Read TTF font
+			var ttfFontPath = wf.getFontPath(o, 'ttf');
+			var ttfFont = fs.readFileSync(ttfFontPath);
 
-			exec(args, function(err, out, code) {
-				if (err) {
-					if (err instanceof Error) {
-						if (err.code === 'ENOENT') {
-							logger.error('woff2_compress not found. It is required for creating WOFF2 fonts.');
-							done();
-							return;
-						}
-						err = err.message;
-					}
-					logger.error('Can’t run woff2_compress.\n\n' + err);
-					done();
-					return;
-				}
+			// Remove TTF font if not needed
+			if (!has(o.types, 'ttf')) {
+				fs.unlinkSync(ttfFontPath);
+			}
 
-				// Remove TTF font if not needed
-				if (!has(o.types, 'ttf')) {
-					fs.unlinkSync(ttfFont);
-				}
+			// Convert to WOFF2
+			var woffFont = ttf2woff2(ttfFont);
 
-				done();
-			});
+			// Save
+			var woff2FontPath = wf.getFontPath(o, 'woff2');
+			fs.writeFile(woff2FontPath, woffFont, done);
 		}
 
 		/**
@@ -383,15 +382,115 @@ module.exports = function(grunt) {
 		 */
 		function saveCodepointsToFile(){
 			if (!o.codepointsFile) return;
-			var codepointsToString = JSON.stringify(o.codepoints);
-			fs.writeFile(o.codepointsFile, codepointsToString, function(err) {
-				if (err){
-					logger.error(err.message);
-				}
-				else {
-					logger.verbose('Codepoints saved to file "'+ o.codepointsFile+'".');
-				}
+			var codepointsToString = JSON.stringify(o.codepoints, null, 4);
+			try {
+				fs.writeFileSync(o.codepointsFile, codepointsToString);
+				logger.verbose('Codepoints saved to file "' + o.codepointsFile + '".');
+			} catch (err) {
+				logger.error(err.message);
+			}
+		}
+
+		/*
+		 * Prepares base context for templates
+		 */
+		function prepareBaseTemplateContext() {
+			var context = _.extend({}, o);
+			return context;
+		}
+
+		/*
+		 * Makes custom extends necessary for use with preparing the template context
+		 * object for the HTML demo.
+		 */
+		function prepareHtmlTemplateContext() {
+
+			var context = prepareBaseTemplateContext();
+
+			var htmlStyles;
+
+			// Prepare relative font paths for injection into @font-face refs in HTML
+			var relativeRe = new RegExp(_s.escapeRegExp(o.relativeFontPath), 'g');
+			var htmlRelativeFontPath = normalizePath(path.relative(o.destHtml, o.dest));
+			var _fontSrc1 = o.fontSrc1.replace(relativeRe, htmlRelativeFontPath);
+			var _fontSrc2 = o.fontSrc2.replace(relativeRe, htmlRelativeFontPath);
+
+			_.extend(context, {
+				fontSrc1: _fontSrc1,
+				fontSrc2: _fontSrc2,
+				fontfaceStyles: true,
+				baseStyles: true,
+				extraStyles: false,
+				iconsStyles: true,
+				stylesheet: 'css'
 			});
+
+			// Prepares CSS for injection into <style> tag at to of HTML
+			htmlStyles = renderTemplate(o.cssTemplate, context);
+			_.extend(context, {
+				styles: htmlStyles
+			});
+
+			return context;
+		}
+
+		/*
+		 * Iterator function used as callback by looping construct below to
+		 * render "custom output" via mini configuration objects specified in
+		 * the array `options.customOutputs`.
+		 */
+		function generateCustomOutput(outputConfig) {
+
+			// Accesses context
+			var context = prepareBaseTemplateContext();
+			_.extend(context, outputConfig.context);
+
+			// Prepares config attributes related to template filepath
+			var templatePath = outputConfig.template;
+			var extension = path.extname(templatePath);
+			var syntax = outputConfig.syntax || '';
+
+			// Renders template with given context
+			var template = readTemplate(templatePath, syntax, extension);
+			var output = renderTemplate(template, context);
+
+			// Prepares config attributes related to destination filepath
+			var dest = outputConfig.dest || o.dest;
+
+			var filepath;
+			var destParent;
+			var destName;
+
+			if (path.extname(dest) === '') {
+				// If user specifies a directory, filename should be same as template
+				destParent = dest;
+				destName = path.basename(outputConfig.template);
+				filepath = path.join(dest, destName);
+			}
+			else {
+				// If user specifies a file, that is our filepath
+				destParent = path.dirname(dest);
+				filepath = dest;
+			}
+
+			// Ensure existence of parent directory and output to file as desired
+			mkdirp.sync(destParent);
+			fs.writeFileSync(filepath, output);
+		}
+
+		/*
+		 * Iterates over entries in the `options.customOutputs` object and,
+		 * on a config-by-config basis, generates the desired results.
+		 */
+		function generateCustomOutputs(done) {
+
+			if (!o.customOutputs || o.customOutputs.length < 1) {
+				done();
+				return;
+			}
+
+			_.each(o.customOutputs, generateCustomOutput);
+			done();
 		}
 
 		/**
@@ -405,27 +504,11 @@ module.exports = function(grunt) {
 				return;
 			}
 
-			// HTML should not contain relative paths
-			// If some styles was not included in CSS we should include them in HTML to properly render icons
-			var relativeRe = new RegExp(_s.escapeRegExp(o.relativeFontPath), 'g');
-			var htmlRelativeFontPath = normalizePath(path.relative(o.destHtml, o.dest));
-			var context = _.extend(o, {
-				fontSrc1: o.fontSrc1.replace(relativeRe, htmlRelativeFontPath),
-				fontSrc2: o.fontSrc2.replace(relativeRe, htmlRelativeFontPath),
-				fontfaceStyles: true,
-				baseStyles: true,
-				extraStyles: false,
-				iconsStyles: true,
-				stylesheet: 'css'
-			});
-			var htmlStyles = renderTemplate(o.cssTemplate, context);
-			var htmlContext = _.extend(context, {
-				styles: htmlStyles
-			});
+			var context = prepareHtmlTemplateContext();
 
 			// Generate HTML
 			var demoTemplate = readTemplate(o.htmlDemoTemplate, 'demo', '.html');
-			var demo = renderTemplate(demoTemplate, htmlContext);
+			var demo = renderTemplate(demoTemplate, context);
 
 			// Save file
 			fs.writeFileSync(getDemoFilePath(), demo);
@@ -449,22 +532,23 @@ module.exports = function(grunt) {
 		 */
 
 		/**
-		 * Convert a string of comma seperated words into an array
+		 * Convert a string of comma separated words into an array
 		 *
 		 * @param {String} val Input string
 		 * @param {String} defVal Default value
 		 * @return {Array}
 		 */
 		function optionToArray(val, defVal) {
-			if (val === undefined) val = defVal;
-			if (!val) return [];
-			if (typeof val !== 'string') return val;
-			if (val.indexOf(',') !== -1) {
-				return val.split(',');
+			if (val === undefined) {
+				val = defVal;
 			}
-			else {
-				return [val];
+			if (!val) {
+				return [];
 			}
+			if (typeof val !== 'string') {
+				return val;
+			}
+			return val.split(',').map(_.trim);
 		}
 
 		/**
@@ -500,7 +584,7 @@ module.exports = function(grunt) {
 		 * @return {Integer}
 		 */
 		function getNextCodepoint() {
-			while (_.contains(o.codepoints, currentCodepoint)) {
+			while (_.includes(o.codepoints, currentCodepoint)) {
 				currentCodepoint++;
 			}
 			return currentCodepoint;
@@ -617,7 +701,8 @@ module.exports = function(grunt) {
 		 */
 		function renderTemplate(template, context) {
 			try {
-				return _.template(template.template, context);
+				var func = _.template(template.template);
+				return func(context);
 			}
 			catch (e) {
 				grunt.fail.fatal('Error while rendering template ' + template.filename + ': ' + e.message);
@@ -664,8 +749,10 @@ module.exports = function(grunt) {
 		 */
 		function getDemoFilePath() {
 			if (!o.htmlDemo) return null;
-			return path.join(o.destHtml, o.fontBaseName + '.html');
+			var name = o.htmlDemoFilename || o.fontBaseName;
+			return path.join(o.destHtml, name + '.html');
 		}
+
 
 		/**
 		 * Save hash to cache file.
