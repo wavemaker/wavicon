@@ -24,6 +24,9 @@
 	text-rendering:auto;
 	-webkit-font-smoothing:antialiased;
 	-moz-osx-font-smoothing:grayscale;
+  font-size: 18pt;
+  width: 1em;
+  height: 1em;
 }
 
 
