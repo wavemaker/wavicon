@@ -3,10 +3,10 @@
 
 @font-face {
 	font-family:"wavicon";
-	src:url("../fonts/wavicon.eot?c9755e005e617b05612970566b1af943");
+	src:url("../fonts/wavicon.eot?66bdfd4cd5338f07c4c794c34842eb9c");
 	src:url("../fonts/wavicon.eot?#iefix") format("embedded-opentype"),
-		url("../fonts/wavicon.woff?c9755e005e617b05612970566b1af943") format("woff"),
-		url("../fonts/wavicon.ttf?c9755e005e617b05612970566b1af943") format("truetype");
+		url("../fonts/wavicon.woff?66bdfd4cd5338f07c4c794c34842eb9c") format("woff"),
+		url("../fonts/wavicon.ttf?66bdfd4cd5338f07c4c794c34842eb9c") format("truetype");
 	font-weight:normal;
 	font-style:normal;
 }
@@ -24,9 +24,6 @@
 	text-rendering:auto;
 	-webkit-font-smoothing:antialiased;
 	-moz-osx-font-smoothing:grayscale;
-  font-size: 18pt;
-  width: 1em;
-  height: 1em;
 }
 
 
