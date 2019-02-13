@@ -1,5 +1,6 @@
-# SVG to webfont converter for Grunt
-Based on Grunt Webfont https://github.com/sapegin/grunt-webfont  
+# Wavicon
+
+Icon library for wavemaker studio applications 
 
 ## License
 
